@@ -15,7 +15,7 @@ import models.Alex
 from PIL import Image
 
 
-IMAGENET_MEAN_FILE = "./data/ilsvrc_2012_mean.npy"
+IMAGENET_MEAN_FILE = "../data/ilsvrc_2012_mean.npy"
 
 def load_caffemodel(model_path):
     caffe_model = CaffeFunction(model_path)
@@ -129,17 +129,17 @@ if __name__ == '__main__':
     #model = load_caffemodel("models/bvlc_alexnet.caffemodel")
     #save_models(model, "models/alexnet.chainermodel")
 
-    caffe_model = load_models("models/alexnet.chainermodel")
+    caffe_model = load_models("../models/alexnet.chainermodel")
     chainer_model = models.Alex.Alex()
 
     # get label dict
-    label_d = create_label_list("./data/imagenet_label.txt")
+    label_d = create_label_list("../data/imagenet_label.txt")
 
     # copy caffe_model W, b to chainer_model
     copy_model(caffe_model, chainer_model)
 
     # predict target_image
-    resize_img = resize_image("./data/panda2.jpeg")
+    resize_img = resize_image("../data/panda2.jpeg")
     resize_img.show()
     #resize_img = create_diff_mean_image(resize_img, "./data/ilsvrc_2012_mean.npy")
     prob, label_ind, label = predict(resize_img, label_d)
@@ -163,6 +163,7 @@ if __name__ == '__main__':
     part_prob, part_label_ind, part_label = predict(adv_part, label_d)
     print(part_prob)
     print(part_label)
+
 
 
     """

@@ -82,10 +82,10 @@ def add_mean_image(target_array, mean_array):
 
 def resize_image(original_image_path):
     img = Image.open(original_image_path)
-    print(img.size, img.mode)
+    print("original image format:{} {}".format(img.size, img.mode))
 
     img_resize = img.resize((INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE))
-    print(img_resize.size, img_resize.mode)
+    print("resize image format:{} {}".format(img_resize.size, img_resize.mode))
     return img_resize
 
 
@@ -119,7 +119,7 @@ def create_label_list(label_file_path):
         for line in f:
             line = line.rstrip("\n").strip(" ").split(":")
             if len(line) == 2:
-               label_d[int(line[0])] = line[1]
+               label_d[int(line[0])] = line[1].strip(" ")
     return label_d
 
 
@@ -156,8 +156,8 @@ if __name__ == '__main__':
     orig_array = np.asarray(orig_img)
     orig_array = substract_mean_image(orig_img, mean_image_array)
     prob, label_ind, label = predict(orig_array, label_d)
-    print(label)
-    print(prob)
+    print("predict_original_image: {} predict_prob: {}".format(label.strip(" "), prob))
+
 
     # create adv_sample
     adv_array, adv_part_array = create_adv_sample(orig_array, label_ind, eps=0.08)
@@ -166,13 +166,11 @@ if __name__ == '__main__':
     adv_array = format2orig(adv_array[0])
     adv_part_array = format2orig(adv_part_array[0])
 
-    adv_prob, adv_label_ind, adv_label = predict(adv_array, label_d)
-    print(adv_label)
-    print(adv_prob)
-
     part_prob, part_label_ind, part_label = predict(adv_part_array, label_d)
-    print(part_label)
-    print(part_prob)
+    print("predict_adversarial_perturbations: {} predict_prob: {}".format(part_label, part_prob))
+
+    adv_prob, adv_label_ind, adv_label = predict(adv_array, label_d)
+    print("predict_adversarial_examples: {} predict_prob: {}".format(adv_label, adv_prob))
 
     # show adv_image
     adv_array = add_mean_image(adv_array, mean_image_array)

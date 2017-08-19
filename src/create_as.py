@@ -16,6 +16,7 @@ from PIL import Image
 
 
 IMAGENET_MEAN_FILE = "../data/ilsvrc_2012_mean.npy"
+INPUT_IMAGE_SIZE = 227
 
 def load_caffemodel(model_path):
     caffe_model = CaffeFunction(model_path)
@@ -59,34 +60,41 @@ def copy_model(src, dst):
             print('Copy %s' % child.name)
 
 
-def create_diff_mean_image(chainer_array, pic_mean_data_path):
+def create_mean_image_array(pic_mean_data_path, size_image):
+    mean_data = np.load(pic_mean_data_path)
+    mean_data = Image.fromarray(mean_data.astype(np.uint8), 'RGB').resize((size_image, size_image))
+    mean_data = np.asarray(mean_data).astype(np.float32)
+    return mean_data
+
+
+def substract_mean_image(target_array, mean_array):
     # mean_value: 104 B
     # mean_value: 117 G
     # mean_value: 123 R
-    tmp_image = chainer_array.copy()
-    mean_data = np.load(pic_mean_data_path)
-    mean_data = Image.fromarray(mean_data.astype(np.uint8), 'RGB').resize((227, 227))
-    mean_data = np.asarray(mean_data).transpose(2, 0, 1)
-    #tmp_image = tmp_image - mean_data
-    tmp_image[0] = tmp_image[0] - mean_data[0]
-    tmp_image[1] = tmp_image[1] - mean_data[1]
-    tmp_image[2] = tmp_image[2] - mean_data[2]
-    return tmp_image
+    result_array = target_array - mean_array
+    return result_array
+
+
+def add_mean_image(target_array, mean_array):
+    result_array = target_array + mean_array
+    return result_array
 
 
 def resize_image(original_image_path):
     img = Image.open(original_image_path)
     print(img.size, img.mode)
 
-    img_resize = img.resize((227, 227))
+    img_resize = img.resize((INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE))
     print(img_resize.size, img_resize.mode)
     return img_resize
 
 
 def format2chainer(img_data):
+    # RGB to GBR
     arrayImg = np.asarray(img_data).astype(np.float32)[:, :, ::-1]
+    # HWC to CWH
     arrayImg = arrayImg.transpose(2, 0, 1)
-    arrayImg = create_diff_mean_image(arrayImg, IMAGENET_MEAN_FILE)
+    # 3-dimensions to 4-dimensions
     arrayImg = arrayImg.reshape((1,) + arrayImg.shape)
     return arrayImg
 
@@ -97,9 +105,9 @@ def format2orig(chainer_img):
     return orig_image
 
 
-def predict(target_image, label_d):
-    chainer_img = format2chainer(target_image)
-    raw_result = chainer_model(chainer_img)
+def predict(target_array, label_d):
+    chainer_array = format2chainer(target_array)
+    raw_result = chainer_model(chainer_array)
     result = F.softmax(raw_result)
     target_ind = np.argmax(result.data)
     return np.max(result.data), target_ind, label_d[target_ind]
@@ -138,44 +146,37 @@ if __name__ == '__main__':
     # copy caffe_model W, b to chainer_model
     copy_model(caffe_model, chainer_model)
 
-    # predict target_image
-    resize_img = resize_image("../data/panda2.jpeg")
-    resize_img.show()
-    #resize_img = create_diff_mean_image(resize_img, "./data/ilsvrc_2012_mean.npy")
-    prob, label_ind, label = predict(resize_img, label_d)
+    # create mean image array
+    mean_image_array = create_mean_image_array(IMAGENET_MEAN_FILE, INPUT_IMAGE_SIZE)
 
-    print(prob)
+    # predict target_image
+    orig_img = resize_image("../data/airplane.jpeg")
+    orig_img.show()
+
+    orig_array = np.asarray(orig_img)
+    orig_array = substract_mean_image(orig_img, mean_image_array)
+    prob, label_ind, label = predict(orig_array, label_d)
     print(label)
+    print(prob)
 
     # create adv_sample
-    adv_image, adv_part = create_adv_sample(resize_img, label_ind, eps=0.2)
+    adv_array, adv_part_array = create_adv_sample(orig_array, label_ind, eps=0.08)
+
+    # predict adv_image
+    adv_array = format2orig(adv_array[0])
+    adv_part_array = format2orig(adv_part_array[0])
+
+    adv_prob, adv_label_ind, adv_label = predict(adv_array, label_d)
+    print(adv_label)
+    print(adv_prob)
+
+    part_prob, part_label_ind, part_label = predict(adv_part_array, label_d)
+    print(part_label)
+    print(part_prob)
 
     # show adv_image
-    adv_image = format2orig(adv_image[0])
-    adv_part = format2orig(adv_part[0])
-    Image.fromarray(adv_image, 'RGB').show()
-    Image.fromarray(adv_part, 'RGB').show()
-
-    adv_prob, adv_label_ind, adv_label = predict(adv_image, label_d)
-    print(adv_prob)
-    print(adv_label)
-
-    part_prob, part_label_ind, part_label = predict(adv_part, label_d)
-    print(part_prob)
-    print(part_label)
-
-
-
-    """
-    tmp = format2chainer(resize_img)
-    #print(tmp.shape)
-    tmp1 = tmp[0].transpose(1, 2, 0).astype(np.uint8)
-    Image.fromarray(tmp1, 'RGB').show()
-    Image.fromarray(np.asarray(resize_img), 'RGB').show()
-    tmp2 = np.asarray(tmp1) - np.asarray(resize_img)
-    print(np.where(tmp2 !=0))
-    #print(np.asarray(resize_img))
-    #print("a")
-    #print(tmp1)
-    """
+    adv_array = add_mean_image(adv_array, mean_image_array)
+    adv_array = adv_array.astype(np.uint8)
+    Image.fromarray(adv_array, 'RGB').show()
+    Image.fromarray(adv_part_array, 'RGB').show()
 

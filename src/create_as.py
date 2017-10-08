@@ -14,6 +14,10 @@ import pickle
 import models.Alex
 from PIL import Image
 
+from adv_models.fast_gradient import fast_gradient
+from adv_models.iterative_gradient import iterative_gradient
+from adv_models.iterative_least_likely import iterative_least_likely
+
 
 IMAGENET_MEAN_FILE = "../data/ilsvrc_2012_mean.npy"
 INPUT_IMAGE_SIZE = 227
@@ -133,39 +137,6 @@ def create_label_list(label_file_path):
     return label_d
 
 
-def create_gradient_fast_adv_sample(chainer_image, target_ind_v, eps):
-    target_img = Variable(chainer_image)
-    loss = F.softmax_cross_entropy(chainer_model(target_img), target_ind_v)
-    loss.backward()
-    adv_part = np.sign(target_img.grad)
-    adv_images = target_img.data + eps * adv_part
-    return adv_images.astype(np.float32), adv_part
-
-
-def create_iterate_gradient_adv_sample(target_img, target_ind_v, eps, iter_num, alpha):
-    adv_images = np.copy(target_img)
-    for _ in range(iter_num):
-        adv_images = Variable(adv_images)
-        loss = F.softmax_cross_entropy(chainer_model(adv_images), target_ind_v)
-        loss.backward()
-        adv_part = np.sign(adv_images.grad)
-        adv_images = adv_images.data + alpha * eps * adv_part
-        adv_images = np.clip(adv_images, target_img - eps, target_img + eps)
-    return adv_images.astype(np.float32), adv_part
-
-
-def create_iterate_least_likely_adv_sample(target_img, ll_ind_v, eps, iter_num, alpha):
-    adv_images = np.copy(target_img)
-    for _ in range(iter_num):
-        adv_images = Variable(adv_images)
-        loss = F.softmax_cross_entropy(chainer_model(adv_images), ll_ind_v)
-        loss.backward()
-        adv_part = np.sign(adv_images.grad)
-        adv_images = adv_images.data - alpha * eps * adv_part
-        adv_images = np.clip(adv_images, target_img - eps, target_img + eps)
-    return adv_images.astype(np.float32), adv_part
-
-
 
 if __name__ == '__main__':
     #model = load_caffemodel("models/bvlc_alexnet.caffemodel")
@@ -189,30 +160,24 @@ if __name__ == '__main__':
 
     orig_array = np.asarray(orig_img)
     orig_array = substract_mean_image(orig_img, mean_image_array)
+
     prob, label_ind, label = predict(orig_array, label_d)
     print("predict_original_image: {} predict_prob: {}".format(label.strip(" "), prob))
 
-
-    # create adversarial_sample
-    #label_ind = 5
-    #label_ind = np.array(label_ind).astype(np.int32)
-
-    #chainer_img = Variable(format2chainer(orig_array))
     chainer_img = format2chainer(orig_array)
     target_ind_v = Variable(np.array([label_ind.astype(np.int32)]))
 
     # apply gradient sign method
-    #adv_array, adv_part_array = create_gradient_fast_adv_sample(chainer_img, target_ind_v, eps=0.1)
+    #adv_array, adv_part_array = fast_gradient(chainer_model, chainer_img, target_ind_v, eps=0.1)
 
     # apply iterative gradient sign method
-    #adv_array, adv_part_array = create_iterate_gradient_adv_sample(chainer_img, target_ind_v, eps=0.07, iter_num=10, alpha=1.0)
+    #adv_array, adv_part_array = iterative_gradient(chainer_model, chainer_img, target_ind_v, eps=0.07, iter_num=10, alpha=1.0)
 
     # apply iterative least likely class method
     prob, ll_label_ind, ll_label = predict_ll(orig_array, label_d)
     ll_ind_v = Variable(np.array([ll_label_ind.astype(np.int32)]))
     print("predict　least likely original_image: {} predict_prob: {}".format(ll_label.strip(" "), prob))
-    adv_array, adv_part_array = create_iterate_gradient_adv_sample(chainer_img, ll_ind_v, eps=0.07, iter_num=10,
-                                                                   alpha=1.0)
+    adv_array, adv_part_array = iterative_least_likely(chainer_model, chainer_img, ll_ind_v, eps=0.07, iter_num=10, alpha=1.0)
 
     # predict adversarial_image
     adv_array = format2orig(adv_array[0])

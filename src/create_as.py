@@ -100,7 +100,9 @@ def format2chainer(img_data):
 
 
 def format2orig(chainer_img):
+    # CWH to HWC
     orig_image = chainer_img.transpose(1, 2, 0).astype(np.uint8)
+    # BGR to RGB
     orig_image = orig_image[:,:,::-1]
     return orig_image
 
@@ -113,6 +115,14 @@ def predict(target_array, label_d):
     return np.max(result.data), target_ind, label_d[target_ind]
 
 
+def predict_ll(target_array, label_d):
+    chainer_array = format2chainer(target_array)
+    raw_result = chainer_model(chainer_array)
+    result = F.softmax(raw_result)
+    target_ind = np.argmin(result.data)
+    return np.min(result.data), target_ind, label_d[target_ind]
+
+
 def create_label_list(label_file_path):
     label_d = {}
     with open(label_file_path, "r") as f:
@@ -123,14 +133,38 @@ def create_label_list(label_file_path):
     return label_d
 
 
-def create_adv_sample(target_image, target_ind, eps):
-    chainer_img = Variable(format2chainer(target_image))
-    target_ind_v = Variable(np.array([target_ind.astype(np.int32)]))
-    loss = F.softmax_cross_entropy(chainer_model(chainer_img), target_ind_v)
+def create_gradient_fast_adv_sample(chainer_image, target_ind_v, eps):
+    target_img = Variable(chainer_image)
+    loss = F.softmax_cross_entropy(chainer_model(target_img), target_ind_v)
     loss.backward()
-    adv_part = np.sign(chainer_img.grad)
-    adv_images = chainer_img.data + eps * adv_part
+    adv_part = np.sign(target_img.grad)
+    adv_images = target_img.data + eps * adv_part
     return adv_images.astype(np.float32), adv_part
+
+
+def create_iterate_gradient_adv_sample(target_img, target_ind_v, eps, iter_num, alpha):
+    adv_images = np.copy(target_img)
+    for _ in range(iter_num):
+        adv_images = Variable(adv_images)
+        loss = F.softmax_cross_entropy(chainer_model(adv_images), target_ind_v)
+        loss.backward()
+        adv_part = np.sign(adv_images.grad)
+        adv_images = adv_images.data + alpha * eps * adv_part
+        adv_images = np.clip(adv_images, target_img - eps, target_img + eps)
+    return adv_images.astype(np.float32), adv_part
+
+
+def create_iterate_least_likely_adv_sample(target_img, ll_ind_v, eps, iter_num, alpha):
+    adv_images = np.copy(target_img)
+    for _ in range(iter_num):
+        adv_images = Variable(adv_images)
+        loss = F.softmax_cross_entropy(chainer_model(adv_images), ll_ind_v)
+        loss.backward()
+        adv_part = np.sign(adv_images.grad)
+        adv_images = adv_images.data - alpha * eps * adv_part
+        adv_images = np.clip(adv_images, target_img - eps, target_img + eps)
+    return adv_images.astype(np.float32), adv_part
+
 
 
 if __name__ == '__main__':
@@ -150,7 +184,7 @@ if __name__ == '__main__':
     mean_image_array = create_mean_image_array(IMAGENET_MEAN_FILE, INPUT_IMAGE_SIZE)
 
     # predict target_image
-    orig_img = resize_image("../data/airplane.jpeg")
+    orig_img = resize_image("../data/panda.jpeg")
     orig_img.show()
 
     orig_array = np.asarray(orig_img)
@@ -159,10 +193,28 @@ if __name__ == '__main__':
     print("predict_original_image: {} predict_prob: {}".format(label.strip(" "), prob))
 
 
-    # create adv_sample
-    adv_array, adv_part_array = create_adv_sample(orig_array, label_ind, eps=0.08)
+    # create adversarial_sample
+    #label_ind = 5
+    #label_ind = np.array(label_ind).astype(np.int32)
 
-    # predict adv_image
+    #chainer_img = Variable(format2chainer(orig_array))
+    chainer_img = format2chainer(orig_array)
+    target_ind_v = Variable(np.array([label_ind.astype(np.int32)]))
+
+    # apply gradient sign method
+    #adv_array, adv_part_array = create_gradient_fast_adv_sample(chainer_img, target_ind_v, eps=0.1)
+
+    # apply iterative gradient sign method
+    #adv_array, adv_part_array = create_iterate_gradient_adv_sample(chainer_img, target_ind_v, eps=0.07, iter_num=10, alpha=1.0)
+
+    # apply iterative least likely class method
+    prob, ll_label_ind, ll_label = predict_ll(orig_array, label_d)
+    ll_ind_v = Variable(np.array([ll_label_ind.astype(np.int32)]))
+    print("predict　least likely original_image: {} predict_prob: {}".format(ll_label.strip(" "), prob))
+    adv_array, adv_part_array = create_iterate_gradient_adv_sample(chainer_img, ll_ind_v, eps=0.07, iter_num=10,
+                                                                   alpha=1.0)
+
+    # predict adversarial_image
     adv_array = format2orig(adv_array[0])
     adv_part_array = format2orig(adv_part_array[0])
 

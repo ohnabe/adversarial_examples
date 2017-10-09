@@ -1,14 +1,21 @@
 import chainer.functions as F
 from chainer import Variable
 import numpy as np
+import utils.predict
+import os
+import sys
 
-def iterative_gradient(chainer_model, target_img, target_ind_v, eps, iter_num, alpha):
-    adv_images = np.copy(target_img)
+def iterative_gradient(chainer_model, chainer_array, eps, iter_num, alpha):
+    sys.path.append(os.getcwd())
+
+    adv_images = np.copy(chainer_array)
+    orig_prob, orig_ind = utils.predict.predict(chainer_model, Variable(adv_images))
+
     for _ in range(iter_num):
         adv_images = Variable(adv_images)
-        loss = F.softmax_cross_entropy(chainer_model(adv_images), target_ind_v)
+        loss = F.softmax_cross_entropy(chainer_model(adv_images), Variable(np.array([orig_ind.astype(np.int32)])))
         loss.backward()
         adv_part = np.sign(adv_images.grad)
         adv_images = adv_images.data + alpha * eps * adv_part
-        adv_images = np.clip(adv_images, target_img - eps, target_img + eps)
-    return adv_images.astype(np.float32), adv_part
+        adv_images = np.clip(adv_images, chainer_array - eps, chainer_array + eps)
+    return adv_images.astype(np.float32), adv_part, orig_prob, orig_ind

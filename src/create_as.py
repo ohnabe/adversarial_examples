@@ -17,6 +17,7 @@ from PIL import Image
 from adv_models.fast_gradient import fast_gradient
 from adv_models.iterative_gradient import iterative_gradient
 from adv_models.iterative_least_likely import iterative_least_likely
+import utils
 
 
 IMAGENET_MEAN_FILE = "../data/ilsvrc_2012_mean.npy"
@@ -105,18 +106,19 @@ def format2chainer(img_data):
 
 def format2orig(chainer_img):
     # CWH to HWC
-    orig_image = chainer_img.transpose(1, 2, 0).astype(np.uint8)
+    #orig_image = chainer_img.transpose(1, 2, 0).astype(np.uint8)
+    orig_image = chainer_img.transpose(1, 2, 0)
     # BGR to RGB
     orig_image = orig_image[:,:,::-1]
     return orig_image
 
 
-def predict(target_array, label_d):
+def predict(target_array):
     chainer_array = format2chainer(target_array)
     raw_result = chainer_model(chainer_array)
     result = F.softmax(raw_result)
     target_ind = np.argmax(result.data)
-    return np.max(result.data), target_ind, label_d[target_ind]
+    return np.max(result.data), target_ind
 
 
 def predict_ll(target_array, label_d):
@@ -159,38 +161,41 @@ if __name__ == '__main__':
     orig_img.show()
 
     orig_array = np.asarray(orig_img)
-    orig_array = substract_mean_image(orig_img, mean_image_array)
+    orig_array = substract_mean_image(orig_array, mean_image_array)
 
-    prob, label_ind, label = predict(orig_array, label_d)
-    print("predict_original_image: {} predict_prob: {}".format(label.strip(" "), prob))
 
-    chainer_img = format2chainer(orig_array)
-    target_ind_v = Variable(np.array([label_ind.astype(np.int32)]))
+    chainer_array = format2chainer(orig_array)
 
     # apply gradient sign method
-    #adv_array, adv_part_array = fast_gradient(chainer_model, chainer_img, target_ind_v, eps=0.1)
+    #adv_array, adv_part_array, orig_prob, orig_ind = fast_gradient(chainer_model, chainer_array, eps=0.1)
 
     # apply iterative gradient sign method
-    #adv_array, adv_part_array = iterative_gradient(chainer_model, chainer_img, target_ind_v, eps=0.07, iter_num=10, alpha=1.0)
+    #adv_array, adv_part_array, orig_prob, orig_ind = iterative_gradient(chainer_model, chainer_array,
+    #                                                                    eps=2.0, iter_num=10, alpha=1.0)
 
     # apply iterative least likely class method
-    prob, ll_label_ind, ll_label = predict_ll(orig_array, label_d)
-    ll_ind_v = Variable(np.array([ll_label_ind.astype(np.int32)]))
-    print("predict　least likely original_image: {} predict_prob: {}".format(ll_label.strip(" "), prob))
-    adv_array, adv_part_array = iterative_least_likely(chainer_model, chainer_img, ll_ind_v, eps=0.07, iter_num=10, alpha=1.0)
+    adv_array, adv_part_array, orig_prob, orig_ind, least_prob, least_ind = iterative_least_likely(chainer_model, chainer_array,
+                                                                            eps=16.0, iter_num=4, alpha=1.0)
+    print("least　likely category {}".format(label_d[least_ind]))
+
+    # predict original image_result
+    orig_label = label_d[orig_ind]
+    print("predict_original_image: {} predict_prob: {}".format(orig_label.strip(" "), orig_prob))
 
     # predict adversarial_image
-    adv_array = format2orig(adv_array[0])
-    adv_part_array = format2orig(adv_part_array[0])
-
-    part_prob, part_label_ind, part_label = predict(adv_part_array, label_d)
+    part_prob, part_label_ind = utils.predict.predict(chainer_model, adv_part_array)
+    part_label = label_d[part_label_ind]
     print("predict_adversarial_perturbations: {} predict_prob: {}".format(part_label, part_prob))
 
-    adv_prob, adv_label_ind, adv_label = predict(adv_array, label_d)
+    adv_prob, adv_label_ind = utils.predict.predict(chainer_model, adv_array)
+    adv_label = label_d[adv_label_ind]
     print("predict_adversarial_examples: {} predict_prob: {}".format(adv_label, adv_prob))
 
     # show adv_image
+    adv_array = format2orig(adv_array[0])
+    adv_part_array = format2orig(adv_part_array[0])
     adv_array = add_mean_image(adv_array, mean_image_array)
+    adv_array = np.clip(adv_array, 0, 255)
     adv_array = adv_array.astype(np.uint8)
     Image.fromarray(adv_array, 'RGB').show()
     Image.fromarray(adv_part_array, 'RGB').show()

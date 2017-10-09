@@ -2,13 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import pandas as pd
 import chainer
-import chainer.links as L
 import chainer.functions as F
-from chainer import training
-from chainer.training import extensions
-from chainer import initializers, optimizers, serializers, Variable
 from chainer.links.caffe import CaffeFunction
 import pickle
 import models.Alex
@@ -17,7 +12,6 @@ from PIL import Image
 from adv_models.fast_gradient import fast_gradient
 from adv_models.iterative_gradient import iterative_gradient
 from adv_models.iterative_least_likely import iterative_least_likely
-import utils
 
 
 IMAGENET_MEAN_FILE = "../data/ilsvrc_2012_mean.npy"
@@ -123,6 +117,12 @@ def create_label_list(label_file_path):
     return label_d
 
 
+def get_result(predict_result, label_d):
+    prob = np.max(predict_result)
+    label_ind = np.argmax(predict_result)
+    label = label_d[label_ind]
+    return prob, label_ind, label
+
 
 if __name__ == '__main__':
     #model = load_caffemodel("models/bvlc_alexnet.caffemodel")
@@ -141,39 +141,40 @@ if __name__ == '__main__':
     mean_image_array = create_mean_image_array(IMAGENET_MEAN_FILE, INPUT_IMAGE_SIZE)
 
     # predict target_image
-    orig_img = resize_image("../data/panda.jpeg")
+    orig_img = resize_image("../data/panda2.jpeg")
     orig_img.show()
 
     orig_array = np.asarray(orig_img)
     orig_array = substract_mean_image(orig_array, mean_image_array)
 
-
     chainer_array = format2chainer(orig_array)
 
     # apply gradient sign method
-    #adv_array, adv_part_array, orig_prob, orig_ind = fast_gradient(chainer_model, chainer_array, eps=0.1)
+    adv_array, adv_part_array, orig_result = fast_gradient(chainer_model, chainer_array, eps=8.0)
 
     # apply iterative gradient sign method
-    #adv_array, adv_part_array, orig_prob, orig_ind = iterative_gradient(chainer_model, chainer_array,
-    #                                                                    eps=2.0, iter_num=10, alpha=1.0)
+    #adv_array, adv_part_array, orig_result = iterative_gradient(chainer_model, chainer_array,
+    #                                                                    eps=8.0, alpha=1.0)
 
     # apply iterative least likely class method
-    adv_array, adv_part_array, orig_prob, orig_ind, least_prob, least_ind = iterative_least_likely(chainer_model, chainer_array,
-                                                                            eps=16.0, iter_num=4, alpha=1.0)
-    print("least　likely category {}".format(label_d[least_ind]))
+    #adv_array, adv_part_array, orig_result = iterative_least_likely(chainer_model, chainer_array,
+    #                                                                eps=8.0, alpha=1.0)
+    #least_ind = np.argmin(orig_result)
+    #print("least　likely category {}".format(label_d[least_ind]))
 
     # predict original image_result
-    orig_label = label_d[orig_ind]
+    orig_prob, orig_ind, orig_label = get_result(orig_result, label_d)
     print("predict_original_image: {} predict_prob: {}".format(orig_label.strip(" "), orig_prob))
 
     # predict adversarial_image
-    part_prob, part_label_ind = utils.predict.predict(chainer_model, adv_part_array)
-    part_label = label_d[part_label_ind]
+    predict_result = F.softmax(chainer_model(adv_part_array)).data
+    part_prob, part_label_ind, part_label = get_result(predict_result, label_d)
     print("predict_adversarial_perturbations: {} predict_prob: {}".format(part_label, part_prob))
 
-    adv_prob, adv_label_ind = utils.predict.predict(chainer_model, adv_array)
-    adv_label = label_d[adv_label_ind]
+    predict_result = F.softmax(chainer_model(adv_array)).data
+    adv_prob, adv_label_ind, adv_label = get_result(predict_result, label_d)
     print("predict_adversarial_examples: {} predict_prob: {}".format(adv_label, adv_prob))
+    print("original category prob with adv_images {}".format(predict_result[0][orig_ind]))
 
     # show adv_image
     adv_array = format2orig(adv_array[0])

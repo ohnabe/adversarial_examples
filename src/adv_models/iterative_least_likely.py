@@ -15,6 +15,6 @@ def iterative_least_likely(chainer_model, chainer_array, eps, alpha):
         loss = F.softmax_cross_entropy(chainer_model(adv_images), Variable(np.array([least_ind.astype(np.int32)])))
         loss.backward()
         adv_part = np.sign(adv_images.grad)
-        adv_images = adv_images.data - alpha * eps * adv_part
+        adv_images = adv_images.data - alpha * adv_part
         adv_images = np.clip(adv_images, chainer_array - eps, chainer_array + eps)
     return adv_images.astype(np.float32), adv_part, predict_result

@@ -150,17 +150,17 @@ if __name__ == '__main__':
     chainer_array = format2chainer(orig_array)
 
     # apply gradient sign method
-    adv_array, adv_part_array, orig_result = fast_gradient(chainer_model, chainer_array, eps=8.0)
+    #adv_array, adv_part_array, orig_result = fast_gradient(chainer_model, chainer_array, eps=8.0)
 
     # apply iterative gradient sign method
     #adv_array, adv_part_array, orig_result = iterative_gradient(chainer_model, chainer_array,
     #                                                                    eps=8.0, alpha=1.0)
 
     # apply iterative least likely class method
-    #adv_array, adv_part_array, orig_result = iterative_least_likely(chainer_model, chainer_array,
-    #                                                                eps=8.0, alpha=1.0)
-    #least_ind = np.argmin(orig_result)
-    #print("least　likely category {}".format(label_d[least_ind]))
+    adv_array, adv_part_array, orig_result = iterative_least_likely(chainer_model, chainer_array,
+                                                                    eps=8.0, alpha=1.0)
+    least_ind = np.argmin(orig_result)
+    print("least　likely category {}".format(label_d[least_ind]))
 
     # predict original image_result
     orig_prob, orig_ind, orig_label = get_result(orig_result, label_d)

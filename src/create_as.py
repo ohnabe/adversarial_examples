@@ -113,22 +113,6 @@ def format2orig(chainer_img):
     return orig_image
 
 
-def predict(target_array):
-    chainer_array = format2chainer(target_array)
-    raw_result = chainer_model(chainer_array)
-    result = F.softmax(raw_result)
-    target_ind = np.argmax(result.data)
-    return np.max(result.data), target_ind
-
-
-def predict_ll(target_array, label_d):
-    chainer_array = format2chainer(target_array)
-    raw_result = chainer_model(chainer_array)
-    result = F.softmax(raw_result)
-    target_ind = np.argmin(result.data)
-    return np.min(result.data), target_ind, label_d[target_ind]
-
-
 def create_label_list(label_file_path):
     label_d = {}
     with open(label_file_path, "r") as f:
